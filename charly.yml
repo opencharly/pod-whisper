@@ -1,0 +1,91 @@
+repo: github.com/opencharly/pod-whisper
+defaults:
+    # The registry is required here: without it the BUILD tags the image
+    # `localhost/whisper:<check-tag>` while the pod deploy resolves
+    # `ghcr.io/opencharly/whisper:<check-tag>`, so the deploy cannot see the freshly built image.
+    tag: auto
+    registry: ghcr.io/opencharly
+    # The builder vocabulary the pixi candies need; `arch.arch-builder` is the arch-builder image.
+    builder:
+        pixi: arch.arch-builder
+import:
+    # The CachyOS base image, as a namespace, so the box can say `base: cachyos.cachyos`.
+    # At the PROJECT root, not in the discovered box file: a namespace mounted by a discovered
+    # document resolves only for that document's own lookups and not for the box's base.
+    - cachyos: '@github.com/opencharly/distro-cachyos:v2026.330.1852'
+    # The builder vocabulary the pixi candies need (`builder: pixi: arch.arch-builder`).
+    - arch: '@github.com/opencharly/distro-arch:v2026.330.1808'
+discover:
+    - path: box
+      recursive: true
+    - path: candy
+      recursive: true
+
+check-whisper-pod:
+    pod:
+        image: whisper
+        disposable: true
+        lifecycle: dev
+        volume:
+            - name: whisper-models
+              type: bind
+              host: ~/.local/share/charly/models/whisper
+        description: >-
+                Sole proof of the whisper image on the CachyOS base — the OpenAI-compatible ASR
+                engine. Builds the image from layer-whisper, deploys it as a disposable pod, and
+                runs the candy's baked checks — the service answers /health, it advertises an
+                OpenAI-shaped model list, it transcribes the committed fixture, and a model it does
+                not serve is refused with a 400 naming both. The keyed posture is proven separately
+                by check-whisper-auth, because a baked check cannot assert 401 on a keyless
+                deployment.
+
+# check-whisper-auth — the KEYED posture. A baked candy check cannot assert 401 (the default
+# deployment is keyless, where 401 would be wrong), so the keyed arm needs a deployment that
+# configures a key. This bed asserts BOTH directions, which is what proves the forwarding
+# branch is not dead code.
+check-whisper-auth:
+    pod:
+        image: whisper
+        disposable: true
+        lifecycle: dev
+        volume:
+            - name: whisper-models
+              type: bind
+              host: ~/.local/share/charly/models/whisper
+        env:
+            WHISPER_API_KEY: check-bed-probe-key
+        description: >-
+                Sole proof of the whisper image's KEYED auth posture on the CachyOS base — a
+                disposable pod deployed with WHISPER_API_KEY set. Asserts both directions — an
+                unauthenticated transcription request is refused with 401, and the same request
+                carrying the correct bearer is served the fixture's transcript. Without this bed
+                the 401 branch has no check that fails when it is removed.
+        plan:
+            - check: a keyed deployment refuses an unauthenticated request
+              id: auth-refuses-anonymous
+              context:
+                - runtime
+              timeout: 300s
+              eventually: 5m
+              retry_interval: 5s
+              exit_status: 0
+              stdout:
+                - contains: "401"
+              command: |
+                curl -s -o /dev/null -w '%{http_code}' \
+                     -F file=@"${HOME}/whisper-asr/fixtures/jfk.flac" \
+                     http://127.0.0.1:9000/v1/audio/transcriptions
+            - check: a keyed deployment serves the request that carries the correct bearer
+              id: auth-accepts-bearer
+              context:
+                - runtime
+              timeout: 300s
+              eventually: 5m
+              retry_interval: 5s
+              exit_status: 0
+              stdout:
+                - contains: "fellow Americans"
+              command: |
+                curl -sf -H "Authorization: Bearer check-bed-probe-key" \
+                     -F file=@"${HOME}/whisper-asr/fixtures/jfk.flac" \
+                     http://127.0.0.1:9000/v1/audio/transcriptions
