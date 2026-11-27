@@ -1,0 +1,16 @@
+whisper:
+    candy:
+        base: cachyos.cachyos
+        platform:
+            - linux/amd64
+        description: |
+            OpenAI-compatible Whisper speech-to-text on the CachyOS (x86_64_v3) base.
+            The candy is the only thing this image exists to run — no dbus, no charly CLI —
+            so the image is layer-whisper on the CachyOS base and nothing else. The model
+            cache is a host bind (the shared store) and the candy pins HOME to the image
+            user's home so a bound deployment uses it.
+        candy:
+            - '@github.com/opencharly/layer-whisper:v2026.325.1751'
+            # The base declares init: supervisord; its depends_candy is materialized only when a
+            # candy in the SCANNED set names it, so a standalone consumer pins it here.
+            - '@github.com/opencharly/layer-supervisord:v2026.330.2000'
